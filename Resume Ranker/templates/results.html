@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ranking Results</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="container">
+    <h1>Ranking Results</h1>
+    <p class="subtitle">{{ job_title }}</p>
+
+    <div class="actions">
+      {% if results %}
+      <a href="{{ url_for('download_report') }}" class="btn">Download HR Report (CSV)</a>
+      {% endif %}
+      <a href="{{ url_for('index') }}" class="btn btn-secondary">Back</a>
+      <button type="button" class="btn btn-secondary" id="toggleTheme">Toggle Theme</button>
+    </div>
+
+    {% if multi %}
+      {% for role_title, payload in multi.items() %}
+        <div class="role-section">
+          <h2>{{ role_title }}</h2>
+          <div class="actions">
+            <a href="{{ url_for('download_report_role', role_title=role_title) }}" class="btn">Download CSV</a>
+            <a href="{{ url_for('download_report_all') }}" class="btn btn-secondary">Download All Roles CSV</a>
+          </div>
+          <div class="keywords">
+            <div class="chip-list">
+              <span class="chip">Engine: {{ payload.engine or 'auto' }}</span>
+              {% if payload.weights %}
+              <span class="chip">Skills w: {{ payload.weights.skills }}</span>
+              <span class="chip">Exp w: {{ payload.weights.experience }}</span>
+              <span class="chip">Edu w: {{ payload.weights.education }}</span>
+              {% endif %}
+              <span class="chip">Candidates: {{ payload.results|length }}</span>
+            </div>
+          </div>
+          <div class="keywords">
+            <h3>Job Keywords</h3>
+            <div class="chip-list">
+              {% for kw in payload.summary.job_keywords %}
+                <span class="chip">{{ kw }}</span>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="filters">
+            <input type="text" class="filter-skill" placeholder="Search skill" />
+            <input type="number" class="filter-min" min="0" max="1" step="0.01" placeholder="Min score" />
+            <input type="number" class="filter-years" min="0" max="50" step="1" placeholder="Min years" />
+            <select class="filter-edu">
+              <option value="">Any education</option>
+              <option>PhD</option>
+              <option>Masters</option>
+              <option>Bachelors</option>
+            </select>
+            <input type="text" class="filter-name" placeholder="Search name" />
+            <select class="sort-by">
+              <option value="score_desc">Sort: Score ↓</option>
+              <option value="score_asc">Sort: Score ↑</option>
+              <option value="years_desc">Sort: Years ↓</option>
+              <option value="years_asc">Sort: Years ↑</option>
+              <option value="edu_desc">Sort: Education ↓</option>
+              <option value="edu_asc">Sort: Education ↑</option>
+            </select>
+          </div>
+          <div class="cards">
+            {% for r in payload.results %}
+            <div class="card" data-skills="{{ (r.hard_skills + r.soft_skills)|join(',') }}" data-score="{{ r.final_score }}" data-years="{{ r.years_experience }}" data-edu="{{ r.education_level }}">
+              <div class="card-header">
+                <div class="name">{{ r.filename }}</div>
+                <div class="score">{{ r.final_score }}</div>
+              </div>
+              <div class="bar"><div class="bar-fill" style="width: {{ (r.final_score * 100)|round(0) }}%;"></div></div>
+              <div class="meta">
+                <span class="chip small">{{ r.last_job_title }}</span>
+                <span class="chip small">{{ r.years_experience }} yrs</span>
+                <span class="chip small">{{ r.education_level }}</span>
+              </div>
+              <div class="chip-list">
+                <span class="chip small">Skills: {{ r.skill_score }}</span>
+                <span class="chip small">Experience: {{ r.experience_score }}</span>
+                <span class="chip small">Education: {{ r.education_score }}</span>
+              </div>
+              <div class="actions">
+                <a class="btn btn-secondary" href="{{ url_for('view_resume', file_id=r.file_id) }}" target="_blank">View Resume</a>
+                <a class="btn" href="{{ url_for('download_resume', file_id=r.file_id) }}">Download</a>
+              </div>
+              <div class="skills">
+                {% for s in r.hard_skills %}
+                  <span class="chip small">{{ s }}</span>
+                {% endfor %}
+              </div>
+              <div class="missing">
+                <h4>Keyword Gaps</h4>
+                <div class="chip-list">
+                  {% for m in r.missing_keywords[:8] %}
+                    <span class="chip small">{{ m }}</span>
+                  {% endfor %}
+                </div>
+              </div>
+              <ul class="suggestions">
+                {% for s in r.improvements %}
+                  <li>{{ s }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+            {% endfor %}
+          </div>
+          <div class="charts">
+            <canvas id="scoreChart_{{ loop.index }}" height="120"></canvas>
+            <canvas id="skillChart_{{ loop.index }}" height="120"></canvas>
+            <canvas id="expChart_{{ loop.index }}" height="120"></canvas>
+          </div>
+          <script>
+            (function(){
+              const scores = {{ payload.results|map(attribute='final_score')|list|tojson }};
+              const skills = {{ payload.summary.top_skills|tojson }};
+              const counts = skills.map(s => {{ payload.results|tojson }}.reduce((a,c)=>a+((c.hard_skills||[]).includes(s)?1:0),0));
+              const exps = {{ payload.results|map(attribute='years_experience')|list|tojson }};
+              const ctx1 = document.getElementById('scoreChart_{{ loop.index }}').getContext('2d');
+              new Chart(ctx1,{type:'bar',data:{labels:scores.map((_,i)=>'C'+(i+1)),datasets:[{label:'Scores',data:scores,backgroundColor:'#10b981'}]}});
+              const ctx2 = document.getElementById('skillChart_{{ loop.index }}').getContext('2d');
+              new Chart(ctx2,{type:'bar',data:{labels:skills,datasets:[{label:'Top Skills',data:counts,backgroundColor:'#a7f3d0'}]}});
+              const ctx3 = document.getElementById('expChart_{{ loop.index }}').getContext('2d');
+              new Chart(ctx3,{type:'pie',data:{labels:['0-2','2-5','5+'],datasets:[{data:[exps.filter(e=>e<2).length,exps.filter(e=>e>=2&&e<5).length,exps.filter(e=>e>=5).length],backgroundColor:['#93c5fd','#34d399','#facc15']}]} });
+              const section = document.currentScript.parentElement;
+              const skillInput = section.querySelector('.filter-skill');
+              const minInput = section.querySelector('.filter-min');
+              const yearsInput = section.querySelector('.filter-years');
+              const eduSelect = section.querySelector('.filter-edu');
+              const nameInput = section.querySelector('.filter-name');
+              const sortSelect = section.querySelector('.sort-by');
+              const cards = Array.from(section.querySelectorAll('.card'));
+              function apply(){
+                const q = (skillInput.value||'').toLowerCase();
+                const m = parseFloat(minInput.value||'0');
+                const y = parseFloat(yearsInput.value||'0');
+                const edu = (eduSelect.value||'').toLowerCase();
+                const nameq = (nameInput.value||'').toLowerCase();
+                cards.forEach(c=>{
+                  const has = c.dataset.skills.toLowerCase().includes(q);
+                  const okScore = parseFloat(c.dataset.score)>=m;
+                  const okYears = parseFloat(c.dataset.years)>=y;
+                  const okEdu = !edu || (c.dataset.edu||'').toLowerCase()===edu;
+                  const hasName = (c.querySelector('.name').textContent||'').toLowerCase().includes(nameq);
+                  const show = ((has || !q) && okScore && okYears && okEdu && (hasName || !nameq));
+                  c.style.display = show ? '' : 'none';
+                });
+              }
+              function eduRank(e){ e=(e||'').toLowerCase(); if(e==='phd') return 3; if(e==='masters') return 2; if(e==='bachelors') return 1; return 0; }
+              function applySort(){
+                const val = sortSelect.value;
+                const parent = section.querySelector('.cards');
+                const visible = cards.filter(c=>c.style.display !== 'none');
+                const arr = [...visible];
+                arr.sort((a,b)=>{
+                  const sa = parseFloat(a.dataset.score), sb = parseFloat(b.dataset.score);
+                  const ya = parseFloat(a.dataset.years), yb = parseFloat(b.dataset.years);
+                  const ea = eduRank(a.dataset.edu), eb = eduRank(b.dataset.edu);
+                  if(val==='score_desc') return sb - sa;
+                  if(val==='score_asc') return sa - sb;
+                  if(val==='years_desc') return yb - ya;
+                  if(val==='years_asc') return ya - yb;
+                  if(val==='edu_desc') return eb - ea;
+                  if(val==='edu_asc') return ea - eb;
+                  return 0;
+                });
+                arr.forEach(el=>parent.appendChild(el));
+              }
+              skillInput.addEventListener('input',apply);
+              minInput.addEventListener('input',apply);
+              yearsInput.addEventListener('input',apply);
+              eduSelect.addEventListener('change',apply);
+              nameInput.addEventListener('input',()=>{ apply(); applySort(); });
+              sortSelect.addEventListener('change',applySort);
+            })();
+          </script>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="keywords">
+        <div class="chip-list">
+          <span class="chip">Engine: {{ engine or 'auto' }}</span>
+          {% if weights %}
+          <span class="chip">Skills w: {{ weights.skills }}</span>
+          <span class="chip">Exp w: {{ weights.experience }}</span>
+          <span class="chip">Edu w: {{ weights.education }}</span>
+          {% endif %}
+          <span class="chip">Candidates: {{ results|length }}</span>
+        </div>
+        <h3>Job Keywords</h3>
+        <div class="chip-list">
+          {% for kw in keyword_summary.job_keywords %}
+            <span class="chip">{{ kw }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="filters">
+        <input type="text" id="filterSkill" placeholder="Search skill" />
+        <input type="number" id="filterMin" min="0" max="1" step="0.01" placeholder="Min score" />
+        <input type="number" id="filterYears" min="0" max="50" step="1" placeholder="Min years" />
+        <select id="filterEdu">
+          <option value="">Any education</option>
+          <option>PhD</option>
+          <option>Masters</option>
+          <option>Bachelors</option>
+        </select>
+        <input type="text" id="filterName" placeholder="Search name" />
+        <select id="sortBy">
+          <option value="score_desc">Sort: Score ↓</option>
+          <option value="score_asc">Sort: Score ↑</option>
+          <option value="years_desc">Sort: Years ↓</option>
+          <option value="years_asc">Sort: Years ↑</option>
+          <option value="edu_desc">Sort: Education ↓</option>
+          <option value="edu_asc">Sort: Education ↑</option>
+        </select>
+      </div>
+      <div class="cards">
+        {% for r in results %}
+        <div class="card" data-skills="{{ (r.hard_skills + r.soft_skills)|join(',') }}" data-score="{{ r.final_score }}" data-years="{{ r.years_experience }}" data-edu="{{ r.education_level }}">
+          <div class="card-header">
+            <div class="name">{{ r.filename }}</div>
+            <div class="score">{{ r.final_score }}</div>
+          </div>
+          <div class="bar"><div class="bar-fill" style="width: {{ (r.final_score * 100)|round(0) }}%"></div></div>
+          <div class="meta">
+            <span class="chip small">{{ r.last_job_title }}</span>
+            <span class="chip small">{{ r.years_experience }} yrs</span>
+            <span class="chip small">{{ r.education_level }}</span>
+          </div>
+          <div class="chip-list">
+            <span class="chip small">Skills: {{ r.skill_score }}</span>
+            <span class="chip small">Experience: {{ r.experience_score }}</span>
+            <span class="chip small">Education: {{ r.education_score }}</span>
+          </div>
+          <div class="actions">
+            <a class="btn btn-secondary" href="{{ url_for('view_resume', file_id=r.file_id) }}" target="_blank">View Resume</a>
+            <a class="btn" href="{{ url_for('download_resume', file_id=r.file_id) }}">Download</a>
+          </div>
+          <div class="skills">
+            {% for s in r.hard_skills %}
+              <span class="chip small">{{ s }}</span>
+            {% endfor %}
+          </div>
+          <div class="missing">
+            <h4>Keyword Gaps</h4>
+            <div class="chip-list">
+              {% for m in r.missing_keywords[:8] %}
+                <span class="chip small">{{ m }}</span>
+              {% endfor %}
+            </div>
+          </div>
+          <ul class="suggestions">
+            {% for s in r.improvements %}
+              <li>{{ s }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="charts">
+        <canvas id="scoreChart" height="120"></canvas>
+        <canvas id="skillChart" height="120"></canvas>
+        <canvas id="expChart" height="120"></canvas>
+      </div>
+      <script>
+        const scores = {{ results|map(attribute='final_score')|list|tojson }};
+        const skills = {{ keyword_summary.top_skills|tojson }};
+        const counts = skills.map(s => {{ results|tojson }}.reduce((a,c)=>a+((c.hard_skills||[]).includes(s)?1:0),0));
+        const exps = {{ results|map(attribute='years_experience')|list|tojson }};
+        new Chart(document.getElementById('scoreChart').getContext('2d'),{type:'bar',data:{labels:scores.map((_,i)=>'C'+(i+1)),datasets:[{label:'Scores',data:scores,backgroundColor:'#10b981'}]}});
+        new Chart(document.getElementById('skillChart').getContext('2d'),{type:'bar',data:{labels:skills,datasets:[{label:'Top Skills',data:counts,backgroundColor:'#a7f3d0'}]}});
+        new Chart(document.getElementById('expChart').getContext('2d'),{type:'pie',data:{labels:['0-2','2-5','5+'],datasets:[{data:[exps.filter(e=>e<2).length,exps.filter(e=>e>=2&&e<5).length,exps.filter(e=>e>=5).length],backgroundColor:['#93c5fd','#34d399','#facc15']}]} });
+        const skillInput = document.getElementById('filterSkill');
+        const minInput = document.getElementById('filterMin');
+        const yearsInput = document.getElementById('filterYears');
+        const eduSelect = document.getElementById('filterEdu');
+        const nameInput = document.getElementById('filterName');
+        const sortSelect = document.getElementById('sortBy');
+        const cards = Array.from(document.querySelectorAll('.card'));
+        function apply(){
+          const q = (skillInput.value||'').toLowerCase();
+          const m = parseFloat(minInput.value||'0');
+          const y = parseFloat(yearsInput.value||'0');
+          const edu = (eduSelect.value||'').toLowerCase();
+          const nameq = (nameInput.value||'').toLowerCase();
+          cards.forEach(c=>{
+            const has = c.dataset.skills.toLowerCase().includes(q);
+            const okScore = parseFloat(c.dataset.score)>=m;
+            const okYears = parseFloat(c.dataset.years)>=y;
+            const okEdu = !edu || (c.dataset.edu||'').toLowerCase()===edu;
+            const hasName = (c.querySelector('.name').textContent||'').toLowerCase().includes(nameq);
+            const show = ((has || !q) && okScore && okYears && okEdu && (hasName || !nameq));
+            c.style.display = show ? '' : 'none';
+          });
+        }
+        function eduRank(e){ e=(e||'').toLowerCase(); if(e==='phd') return 3; if(e==='masters') return 2; if(e==='bachelors') return 1; return 0; }
+        function applySort(){
+          const val = sortSelect.value;
+          const parent = document.querySelector('.cards');
+          const visible = cards.filter(c=>c.style.display !== 'none');
+          const arr = [...visible];
+          arr.sort((a,b)=>{
+            const sa = parseFloat(a.dataset.score), sb = parseFloat(b.dataset.score);
+            const ya = parseFloat(a.dataset.years), yb = parseFloat(b.dataset.years);
+            const ea = eduRank(a.dataset.edu), eb = eduRank(b.dataset.edu);
+            if(val==='score_desc') return sb - sa;
+            if(val==='score_asc') return sa - sb;
+            if(val==='years_desc') return yb - ya;
+            if(val==='years_asc') return ya - yb;
+            if(val==='edu_desc') return eb - ea;
+            if(val==='edu_asc') return ea - eb;
+            return 0;
+          });
+          arr.forEach(el=>parent.appendChild(el));
+        }
+        skillInput.addEventListener('input',apply);
+        minInput.addEventListener('input',apply);
+        yearsInput.addEventListener('input',apply);
+        eduSelect.addEventListener('change',apply);
+        nameInput.addEventListener('input',()=>{ apply(); applySort(); });
+        sortSelect.addEventListener('change',applySort);
+        const toggleTheme = document.getElementById('toggleTheme');
+        function setTheme(t){ document.documentElement.setAttribute('data-theme',t); localStorage.setItem('theme',t); }
+        toggleTheme.addEventListener('click',()=>{ const cur = document.documentElement.getAttribute('data-theme')||'light'; setTheme(cur==='light'?'dark':'light'); });
+        const saved = localStorage.getItem('theme');
+        if(saved){ setTheme(saved); }
+      </script>
+    {% endif %}
+  </div>
+</body>
+</html>

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI-Powered Resume Ranker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <div class="container">
+    <h1>AI-Powered Resume Ranker</h1>
+    <p class="subtitle">Upload resumes, get rankings, and actionable improvement suggestions.</p>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="flash">
+          {% for msg in messages %}<div>{{ msg }}</div>{% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <form action="{{ url_for('rank') }}" method="post" enctype="multipart/form-data" class="form">
+      <div class="field">
+        <label for="job_title">Job Title (optional)</label>
+        <input type="text" id="job_title" name="job_title" placeholder="e.g., Machine Learning Engineer" />
+      </div>
+
+      <div class="field">
+        <label for="job_desc">Job Description</label>
+        <textarea id="job_desc" name="job_desc" rows="8" placeholder="Paste the job description here (optional if using Multiple Roles)"></textarea>
+      </div>
+
+      <div class="field" style="display:flex;gap:8px;align-items:center">
+        <input type="number" name="weight_skills_single" min="0" max="1" step="0.1" placeholder="Skills weight (0-1)" value="0.4" />
+        <input type="number" name="weight_experience_single" min="0" max="1" step="0.1" placeholder="Experience weight (0-1)" value="0.3" />
+        <input type="number" name="weight_education_single" min="0" max="1" step="0.1" placeholder="Education weight (0-1)" value="0.3" />
+        <select name="engine_single">
+          <option value="auto">Engine: Auto</option>
+          <option value="sbert">Engine: SBERT</option>
+          <option value="tfidf">Engine: TF-IDF</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Multiple Roles</label>
+        <div id="roles"></div>
+        <button type="button" class="btn btn-secondary" id="addRole">Add Role</button>
+      </div>
+
+      <div class="field">
+        <label for="resumes">Upload Resumes (PDF)</label>
+        <input type="file" id="resumes" name="resumes" accept="application/pdf" multiple required />
+        <small>You can select multiple PDFs.</small>
+      </div>
+
+      <button type="submit" class="btn">Rank Candidates</button>
+    </form>
+
+    <div class="guide">
+      <h3>Mini-Guide</h3>
+      <ul>
+        <li>Extract text from PDF resumes</li>
+        <li>Preprocess text using SpaCy</li>
+        <li>Vectorize using TF-IDF</li>
+        <li>Create a scoring algorithm based on job description keywords</li>
+        <li>Rank candidates and download HR report</li>
+        <li>See improvement aspects for each candidate</li>
+      </ul>
+    </div>
+
+    <div class="actions">
+      <a href="{{ url_for('rank_sample') }}" class="btn btn-secondary">Try Sample Ranking</a>
+      <button type="button" class="btn btn-secondary" id="toggleTheme">Toggle Theme</button>
+    </div>
+  </div>
+  <script>
+    const roles = document.getElementById('roles');
+    const addRole = document.getElementById('addRole');
+    addRole.addEventListener('click', () => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'role';
+      wrapper.innerHTML = `
+        <div class="field">
+          <input type="text" name="role_title[]" placeholder="Role title" />
+        </div>
+        <div class="field">
+          <textarea name="role_desc[]" rows="6" placeholder="Paste job description for this role"></textarea>
+        </div>
+        <div class="field" style="display:flex;gap:8px;align-items:center">
+          <input type="number" name="weight_skills[]" min="0" max="1" step="0.1" placeholder="Skills weight (0-1)" value="0.4" />
+          <input type="number" name="weight_experience[]" min="0" max="1" step="0.1" placeholder="Experience weight (0-1)" value="0.3" />
+          <input type="number" name="weight_education[]" min="0" max="1" step="0.1" placeholder="Education weight (0-1)" value="0.3" />
+          <select name="role_engine[]">
+            <option value="auto">Engine: Auto</option>
+            <option value="sbert">Engine: SBERT</option>
+            <option value="tfidf">Engine: TF-IDF</option>
+          </select>
+        </div>
+      `;
+      roles.appendChild(wrapper);
+    });
+    const preferDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const saved = localStorage.getItem('theme');
+    const theme = saved || (preferDark ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', theme);
+    const toggleTheme = document.getElementById('toggleTheme');
+    function setTheme(t){ document.documentElement.setAttribute('data-theme',t); localStorage.setItem('theme',t); }
+    toggleTheme.addEventListener('click',()=>{ const cur = document.documentElement.getAttribute('data-theme')||'light'; setTheme(cur==='light'?'dark':'light'); });
+  </script>
+</body>
+</html>
